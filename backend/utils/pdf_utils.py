@@ -1,7 +1,5 @@
 # utils/pdf_utils.py
 import fitz  # PyMuPDF
-import pdfplumber
-from io import BytesIO
 import logging
 
 logger = logging.getLogger(__name__)
@@ -21,22 +19,18 @@ def extract_text_from_pdf(content: bytes) -> str:
     - Detects and rejects scanned PDFs
     """
     try:
-        # Validate PDF structure
-        with fitz.open(stream=content, filetype="pdf") as doc:
-            if doc.page_count == 0:
-                return "Empty PDF: No pages found."
-
         all_text = ""
         total_chars = 0
         scanner_mentions = 0  # Count of scanner-related words
 
-        with pdfplumber.open(BytesIO(content)) as pdf:
-            for page_num in range(len(pdf.pages)):
-                # Use fitz for main text extraction
-                doc = fitz.open(stream=content, filetype="pdf")
-                page = doc[page_num]
+        # Open the PDF once and process all pages
+        with fitz.open(stream=content, filetype="pdf") as doc:
+            if doc.page_count == 0:
+                return "Empty PDF: No pages found."
+
+            text_pages = []
+            for page in doc:
                 text = page.get_text("text").strip()
-                doc.close()
 
                 # Count meaningful characters
                 cleaned_text = "".join(c for c in text if c.isalnum() or c.isspace())
@@ -48,9 +42,13 @@ def extract_text_from_pdf(content: bytes) -> str:
                     if word in text_lower:
                         scanner_mentions += text_lower.count(word)
 
-                # Append to full text (for later analysis)
+                # Append to list (for later analysis)
                 if text:
-                    all_text += text + "\n"
+                    text_pages.append(text)
+        
+        all_text = "\n".join(text_pages)
+        if all_text:
+            all_text += "\n"
 
         # --- Decision Logic ---
         # If no meaningful text was extracted

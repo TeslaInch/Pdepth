@@ -13,3 +13,4 @@ aiofiles
 requests
 openai
 pdfplumber
+pytest
