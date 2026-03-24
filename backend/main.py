@@ -1,5 +1,5 @@
 # main.py
-from fastapi import FastAPI, UploadFile, File, HTTPException, Request
+from fastapi import FastAPI, UploadFile, File, HTTPException, Request, Depends
 from fastapi.responses import JSONResponse
 import os
 import asyncio
@@ -24,21 +24,13 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 # -----------------------------
-# User Quota: 5 PDFs/hour per IP
+# Auth & Plan Gating
 # -----------------------------
-user_pdf_count = {}
-
-def is_allowed_upload(ip: str) -> bool:
-    now = time.time()
-    if ip not in user_pdf_count:
-        user_pdf_count[ip] = {"count": 0, "reset_time": now + 3600}
-    elif now > user_pdf_count[ip]["reset_time"]:
-        user_pdf_count[ip] = {"count": 0, "reset_time": now + 3600}
-    return user_pdf_count[ip]["count"] < 3
-
-def increment_pdf_count(ip: str):
-    if ip in user_pdf_count:
-        user_pdf_count[ip]["count"] += 1
+from dependencies import get_current_user
+from services.plan_gate_service import assert_feature_access
+from repositories.pdf_repository import save_pdf_record
+from supabase_client import supabase
+from services.pdf_chat_service import process_and_store_pdf_chunks, generate_chat_answer
 
 # -----------------------------
 # Lifespan
@@ -76,6 +68,9 @@ app.add_middleware(
 # -----------------------------
 # Models
 # -----------------------------
+class ChatRequest(BaseModel):
+    pdf_id: str
+    question: str
 class SummarizeRequest(BaseModel):
     text: str
 
@@ -161,17 +156,17 @@ async def root():
 
 @app.post("/upload-pdf", response_model=ProcessingResponse)
 @limiter.limit("5/minute")
-async def upload_pdf(request: Request, file: UploadFile = File(...)):
+async def upload_pdf(request: Request, file: UploadFile = File(...), user: dict = Depends(get_current_user)):
+    user_id = user["id"]
     client_ip = request.client.host
-    logger.info(f"📥 Upload initiated from {client_ip}")
+    logger.info(f"📥 Upload initiated by user {user_id} from {client_ip}")
 
-    # Rate limit
-    if not is_allowed_upload(client_ip):
-        logger.warning(f"🚨 Rate limit exceeded for {client_ip}")
-        return JSONResponse(
-            {"error": "Hourly limit exceeded. Try again later.", "status": "rate_limited"},
-            status_code=429
-        )
+    # Enforce plan gating
+    try:
+        assert_feature_access(user, "max_pdfs")
+    except HTTPException as e:
+        logger.warning(f"🚨 Plan limit exceeded for user {user_id}: {e.detail}")
+        raise e
 
     try:
         # Read file
@@ -234,8 +229,8 @@ async def upload_pdf(request: Request, file: UploadFile = File(...)):
                 logger.warning(f"📹 Video recommendation failed: {e}")
                 videos = []
 
-        # Success: increment count
-        increment_pdf_count(client_ip)
+        # Success: Save PDF document record to Supabase
+        save_pdf_record(user_id=user["id"], file_name=file.filename, storage_path=f"{user['id']}/{file.filename}")
         logger.info("🎉 Upload completed successfully")
 
         return {
@@ -255,9 +250,81 @@ async def upload_pdf(request: Request, file: UploadFile = File(...)):
             status_code=500
         )
 
+@app.post("/upload-pdfs")
+@limiter.limit("5/minute")
+async def upload_multiple_pdfs(request: Request, files: List[UploadFile] = File(...), user: dict = Depends(get_current_user)):
+    user_id = user["id"]
+    client_ip = request.client.host
+    logger.info(f"📥 Multi-Upload initiated by user {user_id} with {len(files)} files")
+
+    results = []
+    for file in files:
+        # Enforce plan gating per upload
+        try:
+            assert_feature_access(user, "max_pdfs")
+        except HTTPException as e:
+            logger.warning(f"🚨 Plan limit exceeded for user {user_id}: {e.detail}")
+            results.append({"filename": file.filename, "status": "failed", "error": "Plan limit exceeded"})
+            continue
+
+        try:
+            content = await file.read()
+            
+            # File size check
+            if len(content) > 15 * 1024 * 1024:
+                results.append({"filename": file.filename, "status": "failed", "error": "File too large"})
+                continue
+                
+            # PDF header check    
+            if not content.startswith(b"%PDF"):
+                results.append({"filename": file.filename, "status": "failed", "error": "Invalid PDF"})
+                continue
+
+            # Upload physically to Supabase Storage bucket
+            storage_path = f"{user_id}/{file.filename}"
+            supabase.storage.from_("pdfs").upload(
+                path=storage_path, 
+                file=content, 
+                file_options={"content-type": "application/pdf"}
+            )
+
+            # Save metadata via repository
+            pdf_record = save_pdf_record(user_id=user_id, file_name=file.filename, storage_path=storage_path)
+
+            # Process chunks for Chat Support
+            if pdf_record and "id" in pdf_record:
+                await process_and_store_pdf_chunks(text, pdf_record["id"], user_id)
+
+            results.append({
+                "filename": file.filename,
+                "status": "completed",
+                "storage_path": storage_path,
+                "message": "File uploaded and saved to Supabase successfully."
+            })
+
+        except Exception as e:
+            logger.error(f"Failed processing {file.filename}: {str(e)}")
+            results.append({"filename": file.filename, "status": "failed", "error": str(e)})
+
+    return {"status": "completed", "total_processed": len(results), "results": results}
+
+@app.post("/chat-pdf")
+@limiter.limit("10/minute")
+async def chat_pdf(request: Request, payload: ChatRequest, user: dict = Depends(get_current_user)):
+    try:
+        answer = await generate_chat_answer(
+            pdf_id=payload.pdf_id, 
+            user_id=user["id"], 
+            question=payload.question
+        )
+        return {"answer": answer, "status": "completed"}
+    except Exception as e:
+        logger.error(f"Chat PDF error: {str(e)}", exc_info=True)
+        return JSONResponse({"error": "Failed to process chat query"}, status_code=500)
+
 @app.post("/summarize")
 @limiter.limit("10/minute")
-async def summarize_text(request: Request, payload: SummarizeRequest):
+async def summarize_text(request: Request, payload: SummarizeRequest, user: dict = Depends(get_current_user)):
     try:
         text = payload.text.strip()
         if not text:
@@ -283,3 +350,55 @@ async def recommend_videos(request: Request, data: SummaryRequest):
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
+
+@app.get("/auth/google")
+async def auth_google(redirect_url: str = "http://pdepth.xyz/auth/callback"):
+    try:
+        res = supabase.auth.sign_in_with_oauth({
+            "provider": "google",
+            "options": {"redirect_to": redirect_url}
+        })
+        return {"url": res.url}
+    except Exception as e:
+        logger.error(f"OAuth URL generation failed: {e}")
+        return JSONResponse({"error": "Failed to generate OAuth URL"}, status_code=500)
+
+@app.get("/auth/callback")
+async def auth_callback(code: str):
+    try:
+        res = supabase.auth.exchange_code_for_session({"auth_code": code})
+        return {
+            "access_token": res.session.access_token,
+            "refresh_token": res.session.refresh_token,
+            "user_id": res.user.id,
+            "email": res.user.email
+        }
+    except Exception as e:
+        logger.error(f"OAuth Callback failed: {e}")
+        return JSONResponse({"error": "Failed to exchange code for session"}, status_code=500)
+
+from services.stripe_service import create_checkout_session, handle_webhook
+
+@app.post("/payments/create-checkout")
+async def create_checkout(user: dict = Depends(get_current_user)):
+    try:
+        url = create_checkout_session(user)
+        return {"url": url}
+    except Exception as e:
+        logger.error(f"Checkout error: {e}")
+        return JSONResponse({"error": "Failed to create checkout session"}, status_code=500)
+
+@app.post("/payments/webhook")
+async def stripe_webhook(request: Request):
+    payload = await request.body()
+    sig_header = request.headers.get("stripe-signature")
+    
+    if not sig_header:
+        return JSONResponse({"error": "Missing signature"}, status_code=400)
+        
+    try:
+        handle_webhook(payload, sig_header)
+        return {"status": "success"}
+    except Exception as e:
+        logger.error(f"Stripe Webhook Error: {e}")
+        return JSONResponse({"error": str(e)}, status_code=400)

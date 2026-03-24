@@ -14,3 +14,7 @@ requests
 openai
 pdfplumber
 pytest
+sqlalchemy
+alembic
+psycopg2-binary
+stripe
