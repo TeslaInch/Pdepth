@@ -351,31 +351,7 @@ async def recommend_videos(request: Request, data: SummaryRequest):
 async def health_check():
     return {"status": "healthy"}
 
-@app.get("/auth/google")
-async def auth_google(redirect_url: str = "http://pdepth.xyz/auth/callback"):
-    try:
-        res = supabase.auth.sign_in_with_oauth({
-            "provider": "google",
-            "options": {"redirect_to": redirect_url}
-        })
-        return {"url": res.url}
-    except Exception as e:
-        logger.error(f"OAuth URL generation failed: {e}")
-        return JSONResponse({"error": "Failed to generate OAuth URL"}, status_code=500)
 
-@app.get("/auth/callback")
-async def auth_callback(code: str):
-    try:
-        res = supabase.auth.exchange_code_for_session({"auth_code": code})
-        return {
-            "access_token": res.session.access_token,
-            "refresh_token": res.session.refresh_token,
-            "user_id": res.user.id,
-            "email": res.user.email
-        }
-    except Exception as e:
-        logger.error(f"OAuth Callback failed: {e}")
-        return JSONResponse({"error": "Failed to exchange code for session"}, status_code=500)
 
 from services.stripe_service import create_checkout_session, handle_webhook
 
