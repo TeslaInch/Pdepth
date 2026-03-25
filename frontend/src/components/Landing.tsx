@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Upload, BookOpen, Video, Download, FileText, Sparkles } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 const Landing = () => {
   const navigate = useNavigate();
@@ -200,15 +201,42 @@ const Landing = () => {
               </div>
               <span className="text-lg font-bold text-foreground">PDepth</span>
             </div>
-            <div className="flex space-x-8 text-muted-foreground">
+            <div className="flex space-x-8 text-muted-foreground w-full justify-center md:justify-end">
               <a href="#" className="hover:text-foreground transition-colors">About</a>
-              <a href="#" className="hover:text-foreground transition-colors">Privacy</a>
-              <a href="#" className="hover:text-foreground transition-colors">Terms</a>
+              
+              <Dialog>
+                <DialogTrigger asChild>
+                  <button className="hover:text-foreground transition-colors">Privacy</button>
+                </DialogTrigger>
+                <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle>Privacy Policy</DialogTitle>
+                  </DialogHeader>
+                  <div className="text-sm text-muted-foreground whitespace-pre-wrap">
+                    {"Your privacy is important to us. This Privacy Policy explains how we collect, use, and protect your information when you use PDepth.\n\n1. Information We Collect\nWe collect information you provide directly to us (like your name and email) and automatically collected information (like usage data).\n\n2. How We Use Your Information\nWe use the information to provide, maintain, and improve our services, communicate with you, and personalize your experience.\n\n3. Data Security\nWe implement reasonable security measures to protect your information, but remember that no method of transmission over the internet is 100% secure.\n\nFor full details, contact our support."}
+                  </div>
+                </DialogContent>
+              </Dialog>
+
+              <Dialog>
+                <DialogTrigger asChild>
+                  <button className="hover:text-foreground transition-colors">Terms</button>
+                </DialogTrigger>
+                <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle>Terms of Service</DialogTitle>
+                  </DialogHeader>
+                  <div className="text-sm text-muted-foreground whitespace-pre-wrap">
+                    {"Welcome to PDepth. By using our service, you agree to these terms.\n\n1. Acceptance of Terms\nBy accessing our service, you agree to be bound by these Terms of Service.\n\n2. User Accounts\nYou are responsible for maintaining the security of your account and password.\n\n3. Acceptable Use\nYou agree not to misuse the service or help anyone else do so. You must not upload illegal or infringing content.\n\n4. Subscriptions\nPaid plans are billed as described during checkout. You may cancel at any time.\n\n5. Limitation of Liability\nOur service is provided 'as is'. We are not liable for damages arising from your use of the service."}
+                  </div>
+                </DialogContent>
+              </Dialog>
+
               <a href="#" className="hover:text-foreground transition-colors">Contact</a>
             </div>
           </div>
           <div className="mt-8 pt-8 border-t text-center text-muted-foreground">
-            <p>&copy; 2025 PDepth. All rights reserved. Made for students worldwide.</p>
+            <p>&copy; {new Date().getFullYear()} PDepth. All rights reserved. Made for students worldwide.</p>
           </div>
         </div>
       </footer>

@@ -335,7 +335,7 @@ return (
             </div>
           </div>
           <div className="mt-8 pt-8 border-t text-center text-muted-foreground">
-            <p>&copy; 2025 PDepth. All rights reserved. Made for students worldwide.</p>
+            <p>&copy; {new Date().getFullYear()} PDepth. All rights reserved. Made for students worldwide.</p>
           </div>
         </div>
       </footer>

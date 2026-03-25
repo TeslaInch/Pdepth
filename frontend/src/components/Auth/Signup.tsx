@@ -7,6 +7,7 @@ import { BookOpen, User, Mail, Lock, Eye, EyeOff } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/supabaseClient";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 const Signup = () => {
   const navigate = useNavigate();
@@ -109,7 +110,7 @@ const Signup = () => {
                       type="text"
                       placeholder="Enter your full name"
                       value={formData.fullName}
-                      onChange={(e) => setFormData({...formData, fullName: e.target.value})}
+                      onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
                       className="pl-10 h-12"
                       required
                     />
@@ -127,7 +128,7 @@ const Signup = () => {
                       type="email"
                       placeholder="Enter your email"
                       value={formData.email}
-                      onChange={(e) => setFormData({...formData, email: e.target.value})}
+                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                       className="pl-10 h-12"
                       required
                     />
@@ -145,7 +146,7 @@ const Signup = () => {
                       type={showPassword ? "text" : "password"}
                       placeholder="Create a password"
                       value={formData.password}
-                      onChange={(e) => setFormData({...formData, password: e.target.value})}
+                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                       className="pl-10 pr-10 h-12"
                       required
                     />
@@ -170,7 +171,7 @@ const Signup = () => {
                       type={showConfirmPassword ? "text" : "password"}
                       placeholder="Confirm your password"
                       value={formData.confirmPassword}
-                      onChange={(e) => setFormData({...formData, confirmPassword: e.target.value})}
+                      onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
                       className="pl-10 pr-10 h-12"
                       required
                     />
@@ -184,11 +185,40 @@ const Signup = () => {
                   </div>
                 </div>
 
-                <Button 
-                  type="submit" 
+                <Button
+                  type="submit"
                   className="w-full h-12 bg-study-gradient hover:shadow-glow text-lg font-medium"
                 >
                   Sign Up
+                </Button>
+
+                <div className="relative my-4">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t border-muted" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-card px-2 text-muted-foreground">Or continue with</span>
+                  </div>
+                </div>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={async () => {
+                    await supabase.auth.signInWithOAuth({
+                      provider: 'google',
+                      options: { redirectTo: window.location.origin + "/dashboard" }
+                    });
+                  }}
+                  className="w-full h-12 text-lg font-medium"
+                >
+                  <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
+                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+                  </svg>
+                  Google
                 </Button>
               </form>
             </CardContent>
@@ -208,11 +238,35 @@ const Signup = () => {
           </div>
 
           {/* Terms */}
-          <div className="text-center text-sm text-muted-foreground">
-            By creating an account, you agree to our{" "}
-            <a href="#" className="text-primary hover:underline">Terms of Service</a>
-            {" "}and{" "}
-            <a href="#" className="text-primary hover:underline">Privacy Policy</a>
+          <div className="text-center text-sm text-muted-foreground flex justify-center items-center gap-1 flex-wrap">
+            By creating an account, you agree to our 
+            <Dialog>
+              <DialogTrigger asChild>
+                <button className="text-primary hover:underline font-medium">Terms of Service</button>
+              </DialogTrigger>
+              <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>Terms of Service</DialogTitle>
+                </DialogHeader>
+                <div className="text-sm text-muted-foreground whitespace-pre-wrap text-left">
+                  {"Welcome to PDepth. By using our service, you agree to these terms.\n\n1. Acceptance of Terms\nBy accessing our service, you agree to be bound by these Terms of Service.\n\n2. User Accounts\nYou are responsible for maintaining the security of your account and password.\n\n3. Acceptable Use\nYou agree not to misuse the service or help anyone else do so. You must not upload illegal or infringing content.\n\n4. Subscriptions\nPaid plans are billed as described during checkout. You may cancel at any time.\n\n5. Limitation of Liability\nOur service is provided 'as is'. We are not liable for damages arising from your use of the service."}
+                </div>
+              </DialogContent>
+            </Dialog>
+            and 
+            <Dialog>
+              <DialogTrigger asChild>
+                <button className="text-primary hover:underline font-medium">Privacy Policy</button>
+              </DialogTrigger>
+              <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>Privacy Policy</DialogTitle>
+                </DialogHeader>
+                <div className="text-sm text-muted-foreground whitespace-pre-wrap text-left">
+                  {"Your privacy is important to us. This Privacy Policy explains how we collect, use, and protect your information when you use PDepth.\n\n1. Information We Collect\nWe collect information you provide directly to us (like your name and email) and automatically collected information (like usage data).\n\n2. How We Use Your Information\nWe use the information to provide, maintain, and improve our services, communicate with you, and personalize your experience.\n\n3. Data Security\nWe implement reasonable security measures to protect your information, but remember that no method of transmission over the internet is 100% secure.\n\nFor full details, contact our support."}
+                </div>
+              </DialogContent>
+            </Dialog>
           </div>
         </div>
       </div>
@@ -220,7 +274,7 @@ const Signup = () => {
       {/* Right Side - Hero Section (Same as Login) */}
       <div className="hidden lg:block flex-1 bg-hero-gradient relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-transparent via-white/10 to-transparent"></div>
-        
+
         {/* Floating Icons */}
         <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
           <div className="relative">
@@ -229,10 +283,10 @@ const Signup = () => {
               <div className="p-6 bg-white/20 backdrop-blur-sm rounded-2xl glass-effect animate-fade-in">
                 <BookOpen className="h-12 w-12 text-white" />
               </div>
-              <div className="p-6 bg-white/20 backdrop-blur-sm rounded-2xl glass-effect animate-fade-in" style={{animationDelay: '0.2s'}}>
+              <div className="p-6 bg-white/20 backdrop-blur-sm rounded-2xl glass-effect animate-fade-in" style={{ animationDelay: '0.2s' }}>
                 <User className="h-12 w-12 text-white" />
               </div>
-              <div className="p-6 bg-white/20 backdrop-blur-sm rounded-2xl glass-effect animate-fade-in" style={{animationDelay: '0.4s'}}>
+              <div className="p-6 bg-white/20 backdrop-blur-sm rounded-2xl glass-effect animate-fade-in" style={{ animationDelay: '0.4s' }}>
                 <BookOpen className="h-12 w-12 text-white" />
               </div>
             </div>
@@ -245,10 +299,10 @@ const Signup = () => {
           <p className="text-xl text-white/90 mb-8 max-w-md mx-auto">
             Upload any PDF, get instant AI-powered summaries, and discover related educational videos to deepen your understanding.
           </p>
-          
+
           {/* Stats */}
           <div className="grid grid-cols-3 gap-6 text-center">
-      
+
           </div>
         </div>
       </div>
