@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Play, Clock, ExternalLink } from "lucide-react";
+import { Play, Clock, ExternalLink, Image as ImageIcon } from "lucide-react";
 
 interface Video {
   id: number;
@@ -19,6 +19,7 @@ interface VideoCardProps {
 
 const VideoCard = ({ video, expanded = false }: VideoCardProps) => {
   const [isPlaying, setIsPlaying] = useState(false);
+  const [imgError, setImgError] = useState(false);
 
   const handlePlay = () => {
     setIsPlaying(true);
@@ -53,14 +54,19 @@ const VideoCard = ({ video, expanded = false }: VideoCardProps) => {
                 />
               ) : (
                 <>
-                  <img
-                    src={getYouTubeThumbnail(video.url)}
-                    alt={video.title}
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      e.currentTarget.src = 'https://via.placeholder.com/480x360/1e90ff/ffffff?text=Video+Thumbnail';
-                    }}
-                  />
+                  {imgError ? (
+                    <div className="w-full h-full bg-gray-800 flex flex-col items-center justify-center text-gray-400">
+                      <ImageIcon className="h-8 w-8 mb-2 opacity-50" />
+                      <span className="text-xs font-medium">Thumbnail Unavailable</span>
+                    </div>
+                  ) : (
+                    <img
+                      src={getYouTubeThumbnail(video.url)}
+                      alt={video.title}
+                      className="w-full h-full object-cover"
+                      onError={() => setImgError(true)}
+                    />
+                  )}
                   <div className="absolute inset-0 bg-black/30 flex items-center justify-center group-hover:bg-black/40 transition-colors">
                     <Button
                       size="lg"
@@ -123,14 +129,18 @@ const VideoCard = ({ video, expanded = false }: VideoCardProps) => {
                   />
                 ) : (
                   <>
-                    <img
-                      src={getYouTubeThumbnail(video.url)}
-                      alt={video.title}
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        e.currentTarget.src = 'https://via.placeholder.com/480x360/1e90ff/ffffff?text=Video+Thumbnail';
-                      }}
-                    />
+                    {imgError ? (
+                      <div className="w-full h-full bg-gray-800 flex flex-col items-center justify-center text-gray-400">
+                        <ImageIcon className="h-6 w-6 sm:h-8 sm:w-8 mb-1 opacity-50" />
+                      </div>
+                    ) : (
+                      <img
+                        src={getYouTubeThumbnail(video.url)}
+                        alt={video.title}
+                        className="w-full h-full object-cover"
+                        onError={() => setImgError(true)}
+                      />
+                    )}
                     <div className="absolute inset-0 bg-black/30 flex items-center justify-center group-hover:bg-black/40 transition-colors">
                       <Button
                         size="sm"

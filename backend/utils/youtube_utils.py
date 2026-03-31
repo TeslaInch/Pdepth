@@ -2,7 +2,6 @@
 import httpx
 import os
 import re
-from collections import Counter
 from typing import List, Dict, Any
 from dotenv import load_dotenv
 

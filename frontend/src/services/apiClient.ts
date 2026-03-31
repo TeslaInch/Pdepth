@@ -4,7 +4,7 @@ class SecureApiClient {
   private baseURL: string;
 
   constructor() {
-    this.baseURL = process.env.REACT_APP_API_URL || "http://localhost:8000";
+    this.baseURL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
   }
 
   private async getAuthHeaders(): Promise<HeadersInit> {
@@ -30,6 +30,15 @@ class SecureApiClient {
       }
       
       const errorData = await response.json().catch(() => ({}));
+      
+      if (response.status === 429 && errorData.error === "limit_reached") {
+        throw { 
+          isLimitReached: true, 
+          message: errorData.message, 
+          retryTime: errorData.retry_time 
+        };
+      }
+      
       throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
     }
     
@@ -87,7 +96,74 @@ class SecureApiClient {
     return this.handleResponse(response);
   }
 
-  async getHealth(): Promise<any> {
+  async retrySummary(pdfId: string): Promise<any> {
+    const headers = await this.getAuthHeaders();
+
+    const response = await fetch(`${this.baseURL}/retry-summary`, {
+      method: "POST",
+      headers: headers,
+      body: JSON.stringify({ pdf_id: pdfId }),
+    });
+
+    return this.handleResponse(response);
+  }
+
+  async chatWithPdf(pdfId: string, question: string): Promise<{ answer: string; status: string }> {
+    const headers = await this.getAuthHeaders();
+
+    const response = await fetch(`${this.baseURL}/chat-pdf`, {
+      method: "POST",
+      headers: headers,
+      body: JSON.stringify({
+        pdf_id: pdfId,
+        question: question,
+      }),
+    });
+
+    return this.handleResponse(response);
+  }
+
+  async generateQuestions(
+    text: string,
+    questionType: string,
+    difficulty: string,
+    count: number = 5
+  ): Promise<{ status: string; data: Record<string, unknown[]> }> {
+    const headers = await this.getAuthHeaders();
+
+    const response = await fetch(`${this.baseURL}/generate-questions`, {
+      method: "POST",
+      headers: headers,
+      body: JSON.stringify({
+        text: text,
+        question_type: questionType,
+        difficulty: difficulty,
+        count: count,
+      }),
+    });
+
+    return this.handleResponse(response);
+  }
+
+  async createCheckoutSession(): Promise<{ url: string }> {
+    const headers = await this.getAuthHeaders();
+    const response = await fetch(`${this.baseURL}/payments/create-checkout`, {
+      method: "POST",
+      headers: headers,
+    });
+    return this.handleResponse(response);
+  }
+
+  async verifyPayment(reference: string): Promise<{ status: string; message: string }> {
+    const headers = await this.getAuthHeaders();
+    const response = await fetch(`${this.baseURL}/payments/verify?reference=${encodeURIComponent(reference)}`, {
+      method: "GET",
+      headers: headers,
+    });
+    return this.handleResponse(response);
+  }
+
+  async getHealth(): Promise<unknown> {
     // Health endpoint doesn't require auth
     const response = await fetch(`${this.baseURL}/health`);
     return this.handleResponse(response);

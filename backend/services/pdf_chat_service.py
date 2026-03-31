@@ -1,10 +1,8 @@
 import os
 import re
-from openai import AsyncOpenAI
+from groq import AsyncGroq
+import google.generativeai as genai
 from supabase_client import supabase
-
-# Uses OPENAI_API_KEY from environment variables automatically
-client = AsyncOpenAI() 
 
 def chunk_text(text: str, max_words: int = 500) -> list[str]:
     text = re.sub(r'\s+', ' ', text).strip()
@@ -29,22 +27,24 @@ def chunk_text(text: str, max_words: int = 500) -> list[str]:
 
 async def process_and_store_pdf_chunks(text: str, pdf_id: str, user_id: str):
     """
-    Chunks the given text, fetches OpenAI embeddings, 
+    Chunks the given text, fetches Gemini Embeddings natively, 
     and inserts the chunks into Supabase pgvector table.
     """
     chunks = chunk_text(text, max_words=300)
     if not chunks:
         return
         
-    # Get embeddings for all chunks in batch
-    response = await client.embeddings.create(
-        input=chunks,
-        model="text-embedding-ada-002"
-    )
-    
+    genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
     records = []
-    for i, chunk_text_content in enumerate(chunks):
-        embedding = response.data[i].embedding
+    for chunk_text_content in chunks:
+        # Embedding using Gemini (768 dimensions)
+        embedding_result = genai.embed_content(
+            model="models/text-embedding-004",
+            content=chunk_text_content,
+            task_type="retrieval_document"
+        )
+        embedding = embedding_result['embedding']
+        
         records.append({
             "pdf_id": pdf_id,
             "user_id": user_id,
@@ -58,16 +58,20 @@ async def process_and_store_pdf_chunks(text: str, pdf_id: str, user_id: str):
 
 async def generate_chat_answer(pdf_id: str, user_id: str, question: str) -> str:
     """
-    1. Embeds the user question.
+    1. Embeds the user question using Gemini.
     2. Runs RPC match_chunks to semantic search the pdf.
-    3. Feeds fetched chunks to the LLM to get the answer.
+    3. Feeds fetched chunks to Groq Llama3 to get the answer.
     """
-    # 1. Embed the question
-    q_response = await client.embeddings.create(
-        input=question,
-        model="text-embedding-ada-002"
+    # Configure Gemini for embedding
+    genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+
+    # 1. Embed the question via Gemini
+    q_response = genai.embed_content(
+        model="models/text-embedding-004",
+        content=question,
+        task_type="retrieval_query"
     )
-    query_embedding = q_response.data[0].embedding
+    query_embedding = q_response['embedding']
     
     # 2. Match chunks via RPC
     rpc_params = {
@@ -88,9 +92,12 @@ async def generate_chat_answer(pdf_id: str, user_id: str, question: str) -> str:
     system_prompt = "You are a helpful assistant answering a question based ONLY on the provided document context."
     user_prompt = f"Context:\n{context}\n\nQuestion:\n{question}\n\nAnswer:"
     
-    # 4. Generate Answer via OpenAI Model
-    chat_response = await client.chat.completions.create(
-        model="gpt-4o-mini",
+    # Instantiate Groq dynamically
+    groq_client = AsyncGroq(api_key=os.getenv("GROQ_API_KEY"))
+
+    # 4. Generate Answer via Groq Llama3 Model
+    chat_response = await groq_client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}

@@ -1,6 +1,11 @@
 # utils/pdf_utils.py
 import fitz  # PyMuPDF
 import logging
+import google.generativeai as genai
+import os
+import tempfile
+import io
+import docx
 
 logger = logging.getLogger(__name__)
 
@@ -12,16 +17,41 @@ SCANNER_WATERMARKS = {
     'image only', 'no text', 'draft', 'confidential'
 }
 
+def extract_text_via_gemini_vision(content: bytes) -> str:
+    """Fallback OCR using Gemini 1.5 Flash File API"""
+    try:
+        genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
+
+        try:
+            gemini_file = genai.upload_file(tmp_path, mime_type="application/pdf")
+            model = genai.GenerativeModel("gemini-1.5-flash")
+            response = model.generate_content(
+                [gemini_file, "Extract all the text from this document accurately. Do not add any commentary or markdown formatting."]
+            )
+            genai.delete_file(gemini_file.name)
+            if response.text and len(response.text.strip()) > 50:
+                return response.text.strip()
+            return "Scanned PDFs are not supported. Please upload a text-based PDF."
+        finally:
+            os.remove(tmp_path)
+    except Exception as e:
+        logger.error(f"Gemini OCR failed: {e}")
+        return "Scanned PDFs are not supported. Please upload a text-based PDF."
+
+
 def extract_text_from_pdf(content: bytes) -> str:
     """
     Extract text from a PDF.
     - Returns clean text if the PDF is native
-    - Detects and rejects scanned PDFs
+    - Uses Gemini Vision OCR fallback if scanned
     """
     try:
         all_text = ""
         total_chars = 0
-        scanner_mentions = 0  # Count of scanner-related words
+        scanner_mentions = 0
 
         # Open the PDF once and process all pages
         with fitz.open(stream=content, filetype="pdf") as doc:
@@ -32,17 +62,14 @@ def extract_text_from_pdf(content: bytes) -> str:
             for page in doc:
                 text = page.get_text("text").strip()
 
-                # Count meaningful characters
                 cleaned_text = "".join(c for c in text if c.isalnum() or c.isspace())
                 total_chars += len(cleaned_text)
 
-                # Count scanner watermarks
                 text_lower = text.lower()
                 for word in SCANNER_WATERMARKS:
                     if word in text_lower:
                         scanner_mentions += text_lower.count(word)
 
-                # Append to list (for later analysis)
                 if text:
                     text_pages.append(text)
         
@@ -53,15 +80,18 @@ def extract_text_from_pdf(content: bytes) -> str:
         # --- Decision Logic ---
         # If no meaningful text was extracted
         if total_chars < 50:
-            return "Scanned PDFs are not supported. Please upload a text-based PDF."
+            logger.info("Minimal text found. Attempting OCR fallback...")
+            return extract_text_via_gemini_vision(content)
 
         # If scanner watermarks appear more than 3 times and text is minimal
         if scanner_mentions > 3 and total_chars < 200:
-            return "Scanned PDFs are not supported. Please upload a text-based PDF."
+            logger.info("Scanner watermarks dominant. Attempting OCR fallback...")
+            return extract_text_via_gemini_vision(content)
 
         # If the entire text is just "CamScanner" repeated
         if all_text.strip() and all(word.lower() in SCANNER_WATERMARKS for word in all_text.split() if len(word) > 2):
-            return "Scanned PDFs are not supported. Please upload a text-based PDF."
+            logger.info("Scanner exclusively detected. Attempting OCR fallback...")
+            return extract_text_via_gemini_vision(content)
 
         # ✅ Valid text-based PDF
         return all_text.strip()
@@ -69,3 +99,33 @@ def extract_text_from_pdf(content: bytes) -> str:
     except Exception as e:
         logger.error(f"Text extraction failed: {e}")
         return "Could not extract text from PDF. The file may be corrupted or encrypted."
+
+def extract_text_from_file(content: bytes, filename: str) -> str:
+    """
+    Unified extraction wrapper for .pdf, .docx, .md, and .txt.
+    Routes to the correct parser based on file extension.
+    """
+    ext = filename.lower().split('.')[-1]
+    
+    if ext == 'pdf':
+        return extract_text_from_pdf(content)
+        
+    elif ext in ['txt', 'md']:
+        try:
+            return content.decode('utf-8').strip()
+        except UnicodeDecodeError:
+            return "Failed to decode text file. Ensure it is saved as UTF-8."
+            
+    elif ext == 'docx':
+        try:
+            doc = docx.Document(io.BytesIO(content))
+            paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
+            text = "\n".join(paragraphs)
+            if not text.strip():
+                return "Empty document: No text found."
+            return text.strip()
+        except Exception as e:
+            logger.error(f"DOCX extraction failed: {e}")
+            return "Could not extract text from DOCX. The file may be corrupted."
+            
+    return "Unsupported file format."

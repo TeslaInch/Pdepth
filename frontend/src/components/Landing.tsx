@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Upload, BookOpen, Video, Download, FileText, Sparkles } from "lucide-react";
+import { Upload, BookOpen, Video, Download, FileText, Sparkles, Check } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
@@ -70,7 +70,7 @@ const Landing = () => {
             <div className="hidden md:flex items-center space-x-8">
               <a href="#features" className="text-muted-foreground hover:text-foreground transition-colors">Features</a>
               <a href="#how-it-works" className="text-muted-foreground hover:text-foreground transition-colors">How it Works</a>
-              <a href="#pricing" className="text-muted-foreground hover:text-foreground transition-colors"></a>
+              <a href="#pricing" className="text-muted-foreground hover:text-foreground transition-colors">Pricing</a>
             </div>
             <div className="flex items-center space-x-3 mt-2 md:mt-0">
               <Button variant="ghost" onClick={() => navigate("/login")}>
@@ -164,6 +164,67 @@ const Landing = () => {
                 <p className="text-muted-foreground text-lg leading-relaxed">{step.description}</p>
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Pricing Section */}
+      <section id="pricing" className="py-24 bg-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4">Simple, Transparent Pricing</h2>
+            <p className="text-xl text-muted-foreground">Start for free, upgrade when you need more power.</p>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+            {/* Free Tier */}
+            <Card className="p-8 shadow-card border-2 border-transparent">
+              <h3 className="text-2xl font-bold mb-2">Free</h3>
+              <div className="text-4xl font-bold text-gray-900 mb-6">$0<span className="text-lg text-gray-500 font-normal">/month</span></div>
+              <ul className="space-y-4 mb-8">
+                <li className="flex items-center text-gray-700">
+                  <Check className="h-5 w-5 text-green-500 mr-2 flex-shrink-0" />
+                  1 PDF Upload
+                </li>
+                <li className="flex items-center text-gray-700">
+                  <Check className="h-5 w-5 text-green-500 mr-2 flex-shrink-0" />
+                  1 Question Generation per day
+                </li>
+                <li className="flex items-center text-gray-700">
+                  <Check className="h-5 w-5 text-green-500 mr-2 flex-shrink-0" />
+                  Standard AI Summaries
+                </li>
+              </ul>
+              <Button onClick={() => navigate("/signup")} variant="outline" className="w-full text-lg py-6">
+                Get Started
+              </Button>
+            </Card>
+
+            {/* Pro Tier */}
+            <Card className="p-8 shadow-glow border-2 border-primary relative overflow-hidden">
+              <div className="absolute top-0 right-0 bg-primary text-white text-xs font-bold px-3 py-1 uppercase rounded-bl-lg">
+                Most Popular
+              </div>
+              <h3 className="text-2xl font-bold mb-2">Pro</h3>
+              <div className="text-4xl font-bold text-gray-900 mb-6">$10<span className="text-lg text-gray-500 font-normal">/month</span></div>
+              <ul className="space-y-4 mb-8">
+                <li className="flex items-center text-gray-700">
+                  <Check className="h-5 w-5 text-primary mr-2 flex-shrink-0" />
+                  Unlimited PDF Uploads
+                </li>
+                <li className="flex items-center text-gray-700">
+                  <Check className="h-5 w-5 text-primary mr-2 flex-shrink-0" />
+                  Unlimited AI MCQ & Essay Generation
+                </li>
+                <li className="flex items-center text-gray-700">
+                  <Check className="h-5 w-5 text-primary mr-2 flex-shrink-0" />
+                  Advanced Context Window
+                </li>
+              </ul>
+              <Button onClick={() => navigate("/signup")} className="w-full text-lg py-6 bg-study-gradient text-white">
+                Upgrade to Pro
+              </Button>
+            </Card>
           </div>
         </div>
       </section>

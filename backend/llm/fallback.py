@@ -1,15 +1,10 @@
-# llm/fallback.py
-from .gemini import summarize_with_gemini
-from .gemini2 import summarize_with_gemini2
-from .gemini3 import summarize_with_gemini3
-from .gemini4 import summarize_with_gemini4
-from .fireworks import summarize_with_fireworks
-from .groq import summarize_with_groq
 import logging
+import google.generativeai as genai
+import os
+import asyncio
 
 logger = logging.getLogger(__name__)
 
-# Blocklist: phrases that indicate invalid output (like the prompt itself)
 INVALID_OUTPUT_PATTERNS = {
     "please generate", "focus on the main ideas", "target length",
     "do not use markdown", "text to summarize", "based on the following text",
@@ -36,31 +31,33 @@ Text to summarize:
 {text.strip()}
 """
 
+def _sync_summarize(prompt: str) -> str:
+    try:
+        genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+        model = genai.GenerativeModel("gemini-2.0-flash")
+        response = model.generate_content(prompt)
+        return response.text.strip()
+    except Exception as e:
+        logger.error(f"Gemini sync error: {e}")
+        return None
+
 async def generate_summary(text: str) -> str:
     if not text or len(text.strip()) < 10:
         return "No content to summarize."
 
     prompt = get_summary_prompt(text)
 
-    providers = [
-        ("Gemini", lambda: summarize_with_gemini(prompt)),
-        ("Gemini2", lambda: summarize_with_gemini2(prompt)),
-        ("Gemini3", lambda: summarize_with_gemini3(prompt)),
-        ("Gemini4", lambda: summarize_with_gemini4(prompt)),
-        ("Fireworks", lambda: summarize_with_fireworks(prompt)),
-        ("Groq", lambda: summarize_with_groq(prompt)),
-    ]
+    try:
+        logger.info(f"Summarizing with Gemini 2.0 Flash...")
+        loop = asyncio.get_event_loop()
+        result = await asyncio.wait_for(
+            loop.run_in_executor(None, _sync_summarize, prompt),
+            timeout=120.0
+        )
+        if result and not is_invalid_output(result):
+            logger.info("✅ Success with Gemini 2.0 Flash")
+            return result.strip()
+    except Exception as e:
+        logger.error(f"❌ Gemini failed: {e}")
 
-    for name, provider in providers:
-        try:
-            logger.info(f"Trying {name}...")
-            result = await provider()
-            if result and not is_invalid_output(result):
-                logger.info(f"✅ Success with {name}")
-                return result.strip()
-        except Exception as e:
-            logger.error(f"❌ {name} failed: {e}")
-            continue
-
-    # ✅ Only return this if all providers failed
     return "Summary could not be generated. Please try again later."

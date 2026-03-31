@@ -10,7 +10,7 @@ def get_pdf_count_for_user(user_id: str) -> int:
     except Exception as e:
         raise Exception(f"Failed to count PDFs for user {user_id}: {str(e)}")
 
-def save_pdf_record(user_id: str, file_name: str, storage_path: str) -> dict:
+def save_pdf_record(user_id: str, file_name: str, storage_path: str, file_hash: str = None, summary: str = None) -> dict:
     """
     Insert a record of a newly uploaded PDF document into the database.
     """
@@ -20,10 +20,25 @@ def save_pdf_record(user_id: str, file_name: str, storage_path: str) -> dict:
             "file_name": file_name,
             "storage_path": storage_path
         }
+        if file_hash:
+            data["file_hash"] = file_hash
+        if summary:
+            data["summary"] = summary
+
         response = supabase.table("pdf_documents").insert(data).execute()
         return response.data[0] if response.data else {}
     except Exception as e:
         raise Exception(f"Failed to save PDF record for user {user_id}: {str(e)}")
+
+def find_pdf_by_hash(file_hash: str) -> dict:
+    """
+    Check if a PDF with this exact content hash has been uploaded before.
+    """
+    try:
+        response = supabase.table("pdf_documents").select("*").eq("file_hash", file_hash).execute()
+        return response.data[0] if response.data else None
+    except Exception as e:
+        return None
 
 def get_all_pdfs_for_user(user_id: str) -> list:
     """

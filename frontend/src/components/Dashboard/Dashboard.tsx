@@ -15,11 +15,17 @@ import {
   Settings,
   User,
   X,
+  Loader2,
+  Crown
 } from "lucide-react";
 import PDFUpload from "./PDFUpload";
 import SummaryCard from "./SummaryCard";
 import VideoCard from "./VideoCard";
+import ChatWidget from "./ChatWidget";
+import QuestionGenerator from "./QuestionGenerator";
 import { supabase } from "@/supabaseClient";
+import { apiClient } from "@/services/apiClient";
+import { toast } from "sonner";
 
 
 
@@ -30,8 +36,27 @@ const Dashboard = () => {
 
   const [summaries, setSummaries] = useState<any[]>([]);
   const [videos, setVideos] = useState<any[]>([]);
+  const [chatPdf, setChatPdf] = useState<{ id: string; title: string } | null>(null);
+  const [questionPdf, setQuestionPdf] = useState<{ summary: string; title: string } | null>(null);
+  const [isUpgrading, setIsUpgrading] = useState(false);
 
    const navigate = useNavigate();
+
+const handleUpgrade = async () => {
+    setIsUpgrading(true);
+    try {
+      const response = await apiClient.createCheckoutSession();
+      if (response.url) {
+        window.location.href = response.url; // Redirect to Paystack
+      } else {
+        toast.error("Failed to initialize checkout.");
+      }
+    } catch (e: any) {
+      toast.error(e.message || "An error occurred starting the checkout flow.");
+    } finally {
+      setIsUpgrading(false);
+    }
+};
 
 const handleLogout = async () => {
   await supabase.auth.signOut();
@@ -55,14 +80,16 @@ const handleLogout = async () => {
     setExpandedSummaries(newExpanded);
   };
 
-  // Create extended details for a summary (mock data - you can enhance this)
+  // Create extended details using real AI-processed metadata
   const getExtendedDetails = (summary: any) => {
+    const text = summary.summary || "";
+    const wordCount = text.split(/\s+/).filter((word: string) => word.length > 0).length;
+    const readingMinutes = Math.max(1, Math.ceil(wordCount / 200));
+
     return {
-      fullSummary: summary.summary, // Use the actual summary as the full summary
-      keyPoints: summary.summary.split('.').filter(point => point.trim().length > 20).slice(0, 5).map(point => point.trim() + '.'),
-      readingTime: "",
-      pageCount: 1,// Random page count - you can get this from PDF metadata
-      difficulty: ""
+      fullSummary: text,
+      keyPoints: text.split('.').filter((point: string) => point.trim().length > 20).slice(0, 5).map((point: string) => point.trim() + '.'),
+      readingTime: `${readingMinutes} min read`,
     };
   };
 
@@ -74,11 +101,12 @@ const handleLogout = async () => {
       // Create summary object
       const summaryObj = {
         id: Date.now() + Math.random(),
+        pdfId: result.pdf_id || "",
         title: result.filename.replace('.pdf', ''),
         summary: result.summary,
         uploadDate: result.upload_date || new Date().toISOString(),
         processingStatus: "completed",
-        author: "Unknown", // You can extract this from PDF metadata if needed
+        author: "Unknown",
       };
 
       // Update state with summary
@@ -102,6 +130,7 @@ const handleLogout = async () => {
   };
 
 return (
+  <>
   <div className="min-h-screen bg-background">
     {/* Top Navigation */}
     <nav className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -123,6 +152,15 @@ return (
           </div>
 
           <div className="flex items-center space-x-4">
+            <Button
+              onClick={handleUpgrade}
+              disabled={isUpgrading}
+              className="bg-primary text-white hover:bg-primary/90 hidden sm:flex items-center"
+              size="sm"
+            >
+              {isUpgrading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Crown className="mr-2 h-4 w-4" />}
+              Upgrade to Pro
+            </Button>
             <Button
               variant="ghost"
               size="sm"
@@ -208,6 +246,8 @@ return (
                           pdf={summaries[summaries.length - 1]} 
                           expanded={expandedSummaries.has(summaries[summaries.length - 1]?.id)}
                           onViewDetails={() => toggleSummaryExpanded(summaries[summaries.length - 1]?.id)}
+                          onChatOpen={() => setChatPdf({ id: summaries[summaries.length - 1]?.pdfId || String(summaries[summaries.length - 1]?.id), title: summaries[summaries.length - 1]?.title })}
+                          onGenerateQuestions={() => setQuestionPdf({ summary: summaries[summaries.length - 1]?.summary, title: summaries[summaries.length - 1]?.title })}
                           extendedDetails={expandedSummaries.has(summaries[summaries.length - 1]?.id) ? getExtendedDetails(summaries[summaries.length - 1]) : undefined}
                         />
                       </CardContent>
@@ -255,6 +295,8 @@ return (
                       pdf={summary} 
                       expanded={expandedSummaries.has(summary.id)}
                       onViewDetails={() => toggleSummaryExpanded(summary.id)}
+                      onChatOpen={() => setChatPdf({ id: summary.pdfId || String(summary.id), title: summary.title })}
+                      onGenerateQuestions={() => setQuestionPdf({ summary: summary.summary, title: summary.title })}
                       extendedDetails={expandedSummaries.has(summary.id) ? getExtendedDetails(summary) : undefined}
                     />
                   ))}
@@ -285,6 +327,8 @@ return (
                         pdf={summary} 
                         expanded={expandedSummaries.has(summary.id)}
                         onViewDetails={() => toggleSummaryExpanded(summary.id)}
+                        onChatOpen={() => setChatPdf({ id: summary.pdfId || String(summary.id), title: summary.title })}
+                      onGenerateQuestions={() => setQuestionPdf({ summary: summary.summary, title: summary.title })}
                         extendedDetails={expandedSummaries.has(summary.id) ? getExtendedDetails(summary) : undefined}
                       />
                     ))}
@@ -340,7 +384,27 @@ return (
         </div>
       </footer>
     </div>
-    
+
+    {/* Chat Widget Modal */}
+    {chatPdf && (
+      <ChatWidget
+        pdfId={chatPdf.id}
+        pdfTitle={chatPdf.title}
+        isOpen={!!chatPdf}
+        onClose={() => setChatPdf(null)}
+      />
+    )}
+
+    {/* Question Generator Modal */}
+    {questionPdf && (
+      <QuestionGenerator
+        summaryText={questionPdf.summary}
+        pdfTitle={questionPdf.title}
+        isOpen={!!questionPdf}
+        onClose={() => setQuestionPdf(null)}
+      />
+    )}
+  </>
   );
 };
 

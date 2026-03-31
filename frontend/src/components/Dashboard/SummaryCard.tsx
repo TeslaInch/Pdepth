@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Download, Calendar, User, Clock, FileText, Eye, AlertCircle } from "lucide-react";
+import { Download, Calendar, User, Clock, FileText, Eye, AlertCircle, MessageSquare, BrainCircuit } from "lucide-react";
 import { jsPDF } from 'jspdf';
 
 interface PDF {
@@ -18,18 +18,37 @@ interface ExtendedDetails {
   fullSummary: string;
   keyPoints: string[];
   readingTime: string;
-  pageCount: number;
-  difficulty: string;
 }
+
+export const isValidSummary = (summaryText: string | undefined | null) => {
+  if (!summaryText || summaryText.trim().length < 20) return false;
+  const lower = summaryText.toLowerCase();
+  const invalidLocators = [
+    "could not extract text",
+    "scanned pdfs are not supported",
+    "empty pdf",
+    "no content to summarize",
+    "could not generate summary",
+    "failed to generate summary",
+    "summary unavailable",
+    "we couldn't read this file"
+  ];
+  return !invalidLocators.some(loc => lower.includes(loc));
+};
 
 interface SummaryCardProps {
   pdf: PDF;
   expanded?: boolean;
   onViewDetails?: () => void;
+  onChatOpen?: () => void;
+  onGenerateQuestions?: () => void;
   extendedDetails?: ExtendedDetails;
 }
 
-const SummaryCard = ({ pdf, expanded = false, onViewDetails, extendedDetails }: SummaryCardProps) => {
+const SummaryCard = ({ pdf, expanded = false, onViewDetails, onChatOpen, onGenerateQuestions, extendedDetails }: SummaryCardProps) => {
+  const [isRetrying, setIsRetrying] = useState(false);
+  const summaryValid = isValidSummary(pdf.summary);
+
   const showToast = (title: string, description: string) => {
     // Simple toast simulation - in a real app you'd use a proper toast system
     console.log(`Toast: ${title} - ${description}`);
@@ -105,7 +124,7 @@ const handleDownload = () => {
 
       doc.setFontSize(12);
       doc.setFont('helvetica', 'normal');
-      doc.text("- Pages: " + extendedDetails.pageCount, 10, y);
+      doc.text(`- Reading Time: ${extendedDetails.readingTime}`, 10, y);
       y += 6;
       doc.text("- Format: PDF", 10, y);
       y += 10;
@@ -133,8 +152,19 @@ const handleDownload = () => {
   }
 };
 
-  const handleRetry = () => {
-    showToast("Retrying...", `Retrying to process "${pdf.title}"`);
+  const handleRetry = async () => {
+    setIsRetrying(true);
+    showToast("Retrying...", `Re-generating summary for "${pdf.title}"...`);
+    try {
+      // @ts-ignore
+      const { apiClient } = await import("@/services/apiClient");
+      await apiClient.retrySummary(pdf.id.toString());
+      showToast("Success", "Generation successful! Reloading...");
+      setTimeout(() => window.location.reload(), 1500);
+    } catch (e: any) {
+      showToast("Retry Failed", e.message);
+      setIsRetrying(false);
+    }
   };
 
   const formatDate = (dateString: string) => {
@@ -209,7 +239,7 @@ const handleDownload = () => {
       </CardHeader>
       
       <CardContent className="pt-0 p-3 sm:p-6 sm:pt-0">
-        {pdf.processingStatus === 'completed' ? (
+        {pdf.processingStatus === 'completed' && summaryValid ? (
           <div className="space-y-4">
             <div className="bg-gray-50 rounded-lg p-3 sm:p-4">
               <div className="flex items-center mb-2">
@@ -224,21 +254,13 @@ const handleDownload = () => {
             {expanded && extendedDetails && (
               <div className="space-y-4 border-t pt-4">
                 {/* Document Stats */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-                  <div className="bg-blue-50 rounded-lg p-3 text-center">
-                    <div className="text-lg sm:text-xl font-bold text-blue-600">{extendedDetails.pageCount}</div>
-                    <div className="text-xs sm:text-sm text-gray-600">Pages</div>
-                  </div>
+                <div className="grid grid-cols-2 gap-3 sm:gap-4">
                   <div className="bg-green-50 rounded-lg p-3 text-center">
-                    <div className="text-xs sm:text-sm font-semibold text-green-600">{extendedDetails.readingTime}</div>
-                    <div className="text-xs sm:text-sm text-gray-600">Reading</div>
-                  </div>
-                  <div className="bg-orange-50 rounded-lg p-3 text-center">
-                    <div className="text-xs sm:text-sm font-semibold text-orange-600">{extendedDetails.difficulty}</div>
-                    <div className="text-xs sm:text-sm text-gray-600">Level</div>
+                    <div className="text-sm sm:text-base font-semibold text-green-600">{extendedDetails.readingTime}</div>
+                    <div className="text-xs sm:text-sm text-gray-600">Reading Time</div>
                   </div>
                   <div className="bg-purple-50 rounded-lg p-3 text-center">
-                    <div className="text-xs sm:text-sm font-semibold text-purple-600">PDF</div>
+                    <div className="text-sm sm:text-base font-semibold text-purple-600">PDF</div>
                     <div className="text-xs sm:text-sm text-gray-600">Format</div>
                   </div>
                 </div>
@@ -275,10 +297,32 @@ const handleDownload = () => {
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-2">
               <div className="flex items-center text-xs sm:text-sm text-gray-500">
                 <Clock className="mr-1 h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" />
-                <span>{expanded && extendedDetails ? extendedDetails.readingTime : '~2 min read'}</span>
+                <span>{extendedDetails ? extendedDetails.readingTime : `${Math.max(1, Math.ceil((pdf.summary || "").split(/\\s+/).filter(w => w.length > 0).length / 200))} min read`}</span>
               </div>
               
               <div className="flex flex-col xs:flex-row gap-2 xs:gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onGenerateQuestions}
+                  disabled={!summaryValid}
+                  title={!summaryValid ? "Generate a valid summary first to unlock Questions." : ""}
+                  className="hover:bg-purple-600 hover:text-white text-xs sm:text-sm w-full xs:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <BrainCircuit className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+                  <span>Questions</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onChatOpen}
+                  disabled={!summaryValid}
+                  title={!summaryValid ? "Generate a valid summary first to unlock Multi-PDF Chat." : ""}
+                  className="hover:bg-indigo-600 hover:text-white text-xs sm:text-sm w-full xs:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <MessageSquare className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+                  <span>Chat</span>
+                </Button>
                 <Button
                   variant="outline"
                   size="sm"
@@ -301,7 +345,7 @@ const handleDownload = () => {
               </div>
             </div>
           </div>
-        ) : pdf.processingStatus === 'processing' ? (
+        ) : pdf.processingStatus === 'processing' || isRetrying ? (
           <div className="flex items-center justify-center py-6 sm:py-8">
             <div className="text-center">
               <div className="animate-spin rounded-full h-6 w-6 sm:h-8 sm:w-8 border-b-2 border-blue-600 mx-auto mb-3"></div>
@@ -329,10 +373,11 @@ const handleDownload = () => {
                 variant="outline" 
                 size="sm" 
                 onClick={handleRetry}
+                disabled={isRetrying}
                 className="text-xs sm:text-sm hover:bg-red-50 hover:text-red-700 hover:border-red-200"
               >
                 <AlertCircle className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
-                Retry Processing
+                {isRetrying ? "Processing..." : "Retry Processing"}
               </Button>
             </div>
           </div>

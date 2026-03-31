@@ -31,12 +31,12 @@ def get_user_plan(user_id: str) -> str:
     except Exception as e:
         raise Exception(f"Failed to fetch plan for user {user_id}: {str(e)}")
 
-def update_user_plan(user_id: str, plan: str, stripe_customer_id: str) -> dict:
+def update_user_plan(user_id: str, plan: str, paystack_customer_id: str) -> dict:
     """
-    Update a user's subscription plan and Stripe customer ID.
+    Update a user's subscription plan and Paystack customer ID.
     """
     try:
-        data = {"plan": plan, "stripe_customer_id": stripe_customer_id}
+        data = {"plan": plan, "paystack_customer_id": paystack_customer_id}
         response = supabase.table("users").update(data).eq("id", user_id).execute()
         return response.data[0] if response.data else {}
     except Exception as e:

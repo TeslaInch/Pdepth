@@ -21,7 +21,7 @@ def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
         if not auth_response or not getattr(auth_response, 'user', None):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid authentication credentials"
+                detail="You don't have permission to perform this action. Please log in again."
             )
             
         # 2. Extract user_id and email
@@ -42,6 +42,6 @@ def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
         # Catch any parsing or supabase auth errors
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Could not validate credentials: {str(e)}",
+            detail="You don't have permission to perform this action. Please log in again.",
             headers={"WWW-Authenticate": "Bearer"},
         )

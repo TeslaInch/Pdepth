@@ -3,12 +3,14 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Card, CardContent } from "@/components/ui/card";
 import { Upload, File, X, CheckCircle, AlertCircle, Clock } from "lucide-react";
+import { supabase } from "@/supabaseClient";
 
 interface UploadFile {
   id: string;
   file: File;
   status: "uploading" | "completed" | "error";
   error?: string;
+  isLimitReached?: boolean;
   result?: any;
 }
 
@@ -27,6 +29,18 @@ const PDFUpload = ({ onUploadComplete }: PDFUploadProps) => {
     console.log(`Toast: ${title} - ${description} (${variant})`);
   };
 
+  const handleUpgrade = async () => {
+    try {
+      const { apiClient } = await import("@/services/apiClient");
+      const response = await apiClient.createCheckoutSession();
+      if (response.url) {
+        window.location.href = response.url;
+      }
+    } catch (e: any) {
+      showToast("Checkout Failed", "Could not initialize checkout. Please try again later.", "destructive");
+    }
+  };
+
   const handleFileSelect = useCallback((files: FileList | null) => {
     if (!files || isProcessing) return;
 
@@ -35,8 +49,11 @@ const PDFUpload = ({ onUploadComplete }: PDFUploadProps) => {
     if (!file) return;
 
     // Validate file type
-    if (!file.type.includes("pdf")) {
-      showToast("Invalid file type", "Please upload only PDF files.", "destructive");
+    const validExtensions = ['pdf', 'txt', 'md', 'docx'];
+    const ext = file.name.split('.').pop()?.toLowerCase();
+    
+    if (!ext || !validExtensions.includes(ext)) {
+      showToast("Invalid file type", "Please upload only PDF, TXT, MD, or DOCX files.", "destructive");
       return;
     }
 
@@ -63,17 +80,22 @@ const PDFUpload = ({ onUploadComplete }: PDFUploadProps) => {
       const formData = new FormData();
       formData.append("file", uploadFile.file);
 
-      console.log("Starting PDF upload and processing...");
+      console.log("Starting document upload and processing...");
+
+      const { data: { session } } = await supabase.auth.getSession();
 
       const response = await fetch(BACKEND_URL, {
         method: "POST",
+        headers: {
+          ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {})
+        },
         body: formData,
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "Failed to process PDF");
+        throw { ...data, status: response.status };
       }
 
       // Mark as completed
@@ -89,26 +111,55 @@ const PDFUpload = ({ onUploadComplete }: PDFUploadProps) => {
       onUploadComplete?.(data);
 
       showToast(
-        "PDF processed successfully!",
+        "Document processed successfully!",
         `${uploadFile.file.name} has been analyzed and summarized.`
       );
 
-    } catch (error: any) {
-      console.error("Upload/processing error:", error);
+    } catch (err: any) {
+      console.error("Upload/processing error:", err);
+      
+      // Since fetch parses API errors physically here, bypassing apiClient handles
+      const isLimitError = err.isLimitReached || err.error === "limit_reached" || err.status === 429;
+      
+      // Convert UTC timestamp natively into the browser's local timezone standard
+      const rawRetry = err.retryTime || err.retry_time;
+      let parsedRetryTime = rawRetry;
+      if (rawRetry) {
+        try {
+          parsedRetryTime = new Date(rawRetry).toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit'
+          });
+        } catch (e) {
+          // Fallback if Date parser chokes on irregular shapes
+          parsedRetryTime = rawRetry;
+        }
+      }
+
+      if (!isLimitError) {
+        showToast("Upload Failed", err.message || err.error || "An unexpected error occurred.", "destructive");
+      }
       
       setUploadFiles((prev) =>
-        prev.map((file) =>
-          file.id === uploadFile.id
-            ? { 
-                ...file, 
-                status: "error", 
-                error: error.message || "Processing failed. Please try again." 
-              }
-            : file
-        )
+        prev.map((f) => {
+          if (f.id === uploadFile.id) {
+            if (isLimitError) {
+              return { 
+                ...f, 
+                status: "error", // Keep status error to halt the progress bar, but flag it uniquely
+                error: `Free plan allows 1 upload per hour. You can upload your next file at ${parsedRetryTime}.`,
+                isLimitReached: true 
+              };
+            }
+            return { 
+              ...f, 
+              status: "error", 
+              error: err.message || err.error || "Upload failed" 
+            };
+          }
+          return f;
+        })
       );
-
-      showToast("Processing failed", error.message || "Please try again.", "destructive");
     } finally {
       setIsProcessing(false);
     }
@@ -139,8 +190,6 @@ const PDFUpload = ({ onUploadComplete }: PDFUploadProps) => {
     handleFileSelect(e.target.files);
   };
 
-  const hasActiveUpload = uploadFiles.some(f => f.status === "uploading");
-
   return (
     <div className="space-y-6">
       <Card
@@ -168,7 +217,7 @@ const PDFUpload = ({ onUploadComplete }: PDFUploadProps) => {
 
           {isProcessing ? (
             <>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">Processing Your PDF...</h3>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">Processing Your Document...</h3>
               <p className="text-gray-600 mb-6">
                 AI is extracting text, generating summary, and finding related videos. 
                 The processing time varies based on size.
@@ -181,10 +230,10 @@ const PDFUpload = ({ onUploadComplete }: PDFUploadProps) => {
           ) : (
             <>
               <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                Drop your PDF here or click to browse
+                Drop your document here or click to browse
               </h3>
               <p className="text-gray-600 mb-6">
-                Supports PDF files up to 15MB • One file at a time
+                Supports PDF, TXT, MD, DOCX up to 15MB • One file at a time
               </p>
 
               <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
@@ -194,7 +243,7 @@ const PDFUpload = ({ onUploadComplete }: PDFUploadProps) => {
                   onClick={() => document.getElementById("file-input")?.click()}
                   disabled={isProcessing}
                 >
-                  <File className="mr-2 h-4 w-4" /> Choose PDF File
+                  <File className="mr-2 h-4 w-4" /> Choose Document
                 </Button>
                 <div className="flex items-center text-gray-500 text-sm">
                   <AlertCircle className="mr-1 h-4 w-4" />
@@ -207,7 +256,7 @@ const PDFUpload = ({ onUploadComplete }: PDFUploadProps) => {
           <input
             id="file-input"
             type="file"
-            accept=".pdf"
+            accept=".pdf,.txt,.md,.docx"
             onChange={handleFileInput}
             className="hidden"
             disabled={isProcessing}
@@ -254,8 +303,11 @@ const PDFUpload = ({ onUploadComplete }: PDFUploadProps) => {
                     {uploadFile.status === "completed" && (
                       <span className="text-sm text-green-600 font-medium">✅ Complete</span>
                     )}
-                    {uploadFile.status === "error" && (
+                    {uploadFile.status === "error" && !uploadFile.isLimitReached && (
                       <span className="text-sm text-red-600 font-medium">❌ Failed</span>
+                    )}
+                    {uploadFile.isLimitReached && (
+                      <span className="text-sm text-amber-600 font-medium">⚠️ Limit Notice</span>
                     )}
 
                     <Button 
@@ -279,17 +331,38 @@ const PDFUpload = ({ onUploadComplete }: PDFUploadProps) => {
                   </div>
                 )}
 
-                {uploadFile.error && (
-                  <p className="text-sm text-red-600 mt-2 bg-red-50 p-2 rounded">
-                    {uploadFile.error}
-                  </p>
-                )}
+                {uploadFile.isLimitReached ? (
+                  <div className="mt-4 p-4 rounded-md bg-amber-50 border border-amber-200 flex flex-col sm:flex-row items-start sm:items-center space-y-3 sm:space-y-0 sm:space-x-4">
+                    <div className="flex-1 flex items-start space-x-3">
+                      <AlertCircle className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <h4 className="text-sm font-semibold text-amber-800">Upload Limit Notice</h4>
+                        <p className="text-sm text-amber-700 mt-1">{uploadFile.error}</p>
+                      </div>
+                    </div>
+                    <Button 
+                      onClick={handleUpgrade} 
+                      className="bg-amber-600 hover:bg-amber-700 text-white shadow-sm flex-shrink-0 w-full sm:w-auto text-xs"
+                      size="sm"
+                    >
+                      Upgrade to Pro for unlimited uploads.
+                    </Button>
+                  </div>
+                ) : uploadFile.error ? (
+                  <div className="mt-4 p-4 rounded-md bg-red-50 border border-red-200 flex items-start space-x-3">
+                    <AlertCircle className="h-5 w-5 text-red-600 mt-0.5 flex-shrink-0" />
+                    <div className="flex-1">
+                      <h4 className="text-sm font-semibold text-red-800">Upload Failed</h4>
+                      <p className="text-sm text-red-600 mt-1">{uploadFile.error}</p>
+                    </div>
+                  </div>
+                ) : null}
 
                 {uploadFile.status === "completed" && uploadFile.result && (
-                  <div className="mt-3 p-3 bg-green-50 rounded-lg">
-                    <p className="text-sm text-green-700 font-medium mb-1">Processing Complete!</p>
-                    <p className="text-xs text-green-600">
-                      Summary generated • {uploadFile.result.videos?.length || 0} videos found
+                  <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-md">
+                    <p className="text-sm text-green-700 flex items-start">
+                      <CheckCircle className="mr-2 h-4 w-4 mt-0.5 flex-shrink-0" />
+                      <span>{uploadFile.result.message || "Processed successfully!"}</span>
                     </p>
                   </div>
                 )}

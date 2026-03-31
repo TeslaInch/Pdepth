@@ -9,6 +9,7 @@ import Login from "./components/Auth/Login";
 import Signup from "./components/Auth/Signup";
 import Dashboard from "./components/Dashboard/Dashboard";
 import NotFound from "./pages/NotFound";
+import Success from "./pages/Success";
 import { supabase } from "@/supabaseClient";
 import AuthGuard from "./components/Auth/AuthGuard"; // <-- Added
 
@@ -46,6 +47,14 @@ const App = () => {
               element={
                 <AuthGuard>
                   <Dashboard />
+                </AuthGuard>
+              }
+            />
+            <Route
+              path="/success"
+              element={
+                <AuthGuard>
+                  <Success />
                 </AuthGuard>
               }
             />

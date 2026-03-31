@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS public.users (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   email TEXT NOT NULL,
   plan TEXT DEFAULT 'free' CHECK (plan IN ('free', 'paid')),
-  stripe_customer_id TEXT,
+  paystack_customer_id TEXT,
   paid_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT now()
 );
@@ -16,6 +16,8 @@ CREATE TABLE IF NOT EXISTS public.pdf_documents (
   user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
   file_name TEXT NOT NULL,
   storage_path TEXT NOT NULL,
+  file_hash TEXT UNIQUE,
+  summary TEXT,
   uploaded_at TIMESTAMPTZ DEFAULT now()
 );
 

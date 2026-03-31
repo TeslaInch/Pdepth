@@ -17,4 +17,5 @@ pytest
 sqlalchemy
 alembic
 psycopg2-binary
-stripe
+mistralai
+python-docx
